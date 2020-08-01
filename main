@@ -1,0 +1,251 @@
+/*
+ * File:   main.c
+ * Author: Jonathan Guerrero, Brandon Plata
+ *
+ * Created on 31 de julio de 2020, 03:35 PM
+ */
+
+
+#define _XTAL_FREQ 20000000     //necesario para utilizar los retardos de la libreria del lcd
+#define LCD_RS       PORTDbits.RD0
+#define LCD_EN       PORTDbits.RD1
+#define LCD_D4       PORTDbits.RD2
+#define LCD_D5       PORTDbits.RD3
+#define LCD_D6       PORTDbits.RD4
+#define LCD_D7       PORTDbits.RD5
+#define LCD_RS_DIR   TRISDbits.TRISD0
+#define LCD_EN_DIR   TRISDbits.TRISD1
+#define LCD_D4_DIR   TRISDbits.TRISD2
+#define LCD_D5_DIR   TRISDbits.TRISD3
+#define LCD_D6_DIR   TRISDbits.TRISD4
+#define LCD_D7_DIR   TRISDbits.TRISD5
+
+
+#include <xc.h>
+#include "LCD_Lib.h"
+#include <stdint.h>
+#include <stdio.h> 
+//_________________________________________________
+
+
+int temp;
+char str[10];
+int display=0;
+//_____________________________________________
+int dist;
+char strD[10];
+
+//________________________________________________________________________________
+//contador de tiempo
+int numero;
+int dec;
+int uni;
+int tiempo = 10;
+int portc_num;
+uint8_t segundos = 58;
+uint8_t minutos = 59;
+uint8_t parte_baja;
+uint8_t parte_alta;
+uint8_t parteb_baja;
+int conta = 0;
+
+//______________________________________________________________________________
+
+int dato_temp[10];
+int conta_temp = 0;
+int dato_min[10];
+
+
+//////////////////////////////////////////////////////////////
+void __interrupt() tcInt(void){     //only process timer0-triggered interrupts
+
+   if(INTCONbits.TMR0IE  && INTCONbits.TMR0IF)
+   {
+        conta++;
+        INTCONbits.T0IF=0;
+        TMR0=62;
+        
+        if(conta==20)
+        {
+            segundos++;
+            conta = 0;
+            PORTBbits.RB7 = !PORTBbits.RB7 ;
+            
+        }
+        if(segundos == 60)
+        {
+        minutos++;
+        segundos = 0;
+        conta = 0;
+        
+        }
+        if(minutos == 2)
+        {
+            eeprom_write (dato_min[conta_temp], minutos);
+            eeprom_write (dato_temp[conta_temp], segundos); 
+            conta_temp++;
+        }
+        if(minutos == 60)
+        {
+            minutos = 0;
+        }
+   }
+}
+
+void descomponerNumero()
+{
+    dec = numero /10;
+    uni = numero % 10;
+} 
+
+
+void sensorTemp()
+{
+    __delay_ms (tiempo);        
+        ADCON0bits.GO    =   1;
+        while(ADCON0bits.GO);
+        temp = ADRESH * 0.59;
+        sprintf(str, "%d", temp);
+}
+//----------------------------------------------------------------------------------
+void sensorDist()
+{
+    PORTBbits.RB1 = 1;      //senal triger
+    __delay_ms(0.020);      //tiempo minimo señal de triger 10uS
+    PORTBbits.RB1 = 0;      //termina señal triger
+    while(!PORTBbits.RB2);  //espera activacion de echo
+    OPTION_REG = 0x07;      //configuracion para incrementar una unidad cada 51,2 uS
+    TMR0 = 0;               // valor iniciar timer 0
+    while(PORTBbits.RB2)    //espera a desactivar del echo
+    dist = (1 + (TMR0*51)/58);    //ecuacion para obtener 58uS por cada incremento de TMR0
+    
+    sprintf(strD, "%d", dist);
+    __delay_ms(2.5);
+}
+
+//____________________________________________________________________________________________
+
+
+
+
+
+
+
+void main(void) {
+    
+    TRISA = 255;
+    TRISB = 0X04;
+    TRISC = 0xF0;
+    ADCON0 = 0X81;
+    ADCON1 = 0X43;      //cuatro entradas analogas y y voltaje de referencia.
+    int k=0;
+    int tecla;
+        
+    
+    LCD_Begin();
+    LCD_Print("  INVERNADERO");
+    __delay_ms(1000);
+    
+    while(1)
+    {
+        
+        
+        
+    PORTC=(PORTC & 0xF0)|0x01;
+      k=0;
+      while(k<200){
+     if(PORTCbits.RC4){
+        //tecla=7;
+         ADCON0 = 0X81;
+                ADCON0bits.CHS0 =   0;
+                sensorTemp();
+                LCD_Goto(1, 1);
+                LCD_Print("                 ");
+                LCD_Goto(1, 2);
+                LCD_Print("          ");
+                LCD_Goto(1, 1);
+                LCD_Print("Temperatura:");
+                LCD_Goto(14, 1);
+                LCD_Print(str);
+                LCD_Goto(1, 2);
+                LCD_Print("sensor 1"); 
+                __delay_ms(tiempo);
+                display = 1;
+        
+
+        
+     }
+      if(PORTCbits.RC5){
+        tecla=8;
+        ADCON0 = 0X81;
+                ADCON0bits.CHS0 =   1;
+        
+                sensorTemp();
+                LCD_Goto(1, 1);
+                LCD_Print("                 ");
+                LCD_Goto(1, 2);
+                LCD_Print("          ");
+                LCD_Goto(1, 1);
+                LCD_Print("Temperatura:");
+                LCD_Goto(14, 1);
+                LCD_Print(str);
+                LCD_Goto(1, 2);
+                LCD_Print("sensor 2"); 
+                __delay_ms(tiempo);
+                display = 2;
+        
+     }
+      if(PORTCbits.RC6){
+        
+        //__delay_ms (tiempo);
+                sensorDist();
+                LCD_Goto(1, 1);
+                LCD_Print("                ");
+                LCD_Goto(1, 2);
+                LCD_Print("                ");
+                LCD_Goto(1, 1);
+                LCD_Print("Distancia: ");
+                LCD_Goto(14, 1);
+                LCD_Print(strD);
+                LCD_Goto(1, 2);
+                LCD_Print("FSR04");
+                __delay_ms(tiempo);
+                display = 0;
+        
+        
+     }
+      if(PORTCbits.RC7){
+        ///operacion="/";
+        
+     }
+     k++;
+      }
+      //______________________________________________________
+        
+        PORTC=(PORTC & 0xF0)|0x02;
+      k=0;
+      while(k<200){
+     if(PORTCbits.RC4){
+        tecla=4;
+        
+     }
+      if(PORTCbits.RC5){
+        tecla=5;
+        
+     }
+      if(PORTCbits.RC6){
+        tecla=6;
+        
+     }
+      if(PORTCbits.RC7){
+      
+        
+     }
+     k++;
+      }
+      
+       //______________________________________________________
+    return;
+    }
+    
+}
